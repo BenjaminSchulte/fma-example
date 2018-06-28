@@ -1,0 +1,19 @@
+= FMA Example
+
+This source code can be seen as a small bootstrap for creating SNES games.
+
+
+== Installation
+
+To install all dependencies just type:
+
+    npm i
+
+You also have to check out the https://github.com/BenjaminSchulte/fma-snes[fma-snes] repository
+to somewhere.
+
+Afterwards you can compile the application using:
+
+    node node_modules/fma-cli/index.js -I /path/to/fma-snes example.fma -o example.sfc
+
+(You can compile the application directly using `fma-cli` if you installed the package)

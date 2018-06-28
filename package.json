@@ -1,0 +1,21 @@
+{
+  "name": "fma-example",
+  "version": "1.0.0",
+  "description": "Example project of FMA",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BenjaminSchulte/fma-example.git"
+  },
+  "keywords": [
+    "fma"
+  ],
+  "author": "Benjamin Schulte <benj@minschulte.de> (http://www.benjaminschulte.de)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/BenjaminSchulte/fma-example/issues"
+  },
+  "homepage": "https://github.com/BenjaminSchulte/fma-example#readme",
+  "dependencies": {
+    "fma-cli": "^0.4.0"
+  }
+}

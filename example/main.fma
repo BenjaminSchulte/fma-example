@@ -1,0 +1,55 @@
+module Game
+
+  ;; The shared buffer can be reused by other parts of the application
+  scope :SharedTemporaryBuffer, in: Memory.DirectPage, shared: true
+
+  ;; Used for the fade effect
+  scope :FadeTemporaryBuffer, in: SharedTemporaryBuffer
+
+  ;; Current fade value
+  declare :current_fade_value, as: :uint8, in: FadeTemporaryBuffer
+
+  ;; Waits for the next frame
+  def wait_for_vblank
+  _loop_in_vblank:
+    LDA   CPU.HVBJOY
+    BMI   _loop_in_vblank
+  _loop_out_vblank:
+    LDA   CPU.HVBJOY
+    BPL   _loop_out_vblank
+  end
+
+  ; Fade in
+  def fade_in
+    LDA   #0
+
+  _fade_in:
+    PPU.Screen.enable brightness: A
+
+    STA   dp(current_fade_value)
+
+    2.times do |index|
+      wait_for_vblank
+    end
+
+    LDA   dp(current_fade_value)
+    INC   A
+    CMP   #16
+    BNE   _fade_in
+  end
+
+end
+
+
+def main
+  SNES.initialize
+
+  ; Upload some beautiful color
+  PPU::Palette.set_color_index 0
+  PPU::Palette.write $7DF0
+
+  Game.fade_in
+
+loop:
+  BRA loop
+end
