@@ -1,13 +1,54 @@
 module Game
 
+  ;; Memory range used for the font
+  scope :FontInPPU, length: FONT_SIZE_IN_BYTES, in: Memory.PPU, align: $2000
+
   ;; The shared buffer can be reused by other parts of the application
   scope :SharedTemporaryBuffer, in: Memory.DirectPage, shared: true
+
+  ;; == FADE EFFECT ==
 
   ;; Used for the fade effect
   scope :FadeTemporaryBuffer, in: SharedTemporaryBuffer
 
   ;; Current fade value
   declare :current_fade_value, as: :uint8, in: FadeTemporaryBuffer
+
+
+  ;; == TEXT EFFECT ==
+
+  scope :OamTemporaryBuffer, in: SharedTemporaryBuffer
+
+  ;; Current offset of the letter
+  declare :letter_offset, as: :uint8, in: OamTemporaryBuffer
+
+  ;; Current offset of the letter
+  declare :current_num_letters, as: :uint8, in: OamTemporaryBuffer
+
+
+  ;; Local copy of the OAM
+  scope :letters, in: Memory.OAM, length: MAX_NUM_LETTERS * 4
+
+  ;; Amount of letters used
+  declare :num_letters, as: :uint8, in: Memory.OAM
+
+  ;; The current velocity of the letters
+  declare :letter_velocity_high, as: :uint8, in: Memory.OAM, length: MAX_NUM_LETTERS
+
+  ;; The current velocity of the letters
+  declare :letter_velocity_low, as: :uint8, in: Memory.OAM, length: MAX_NUM_LETTERS
+
+  ;; The current position of the letters
+  declare :letter_position_low, as: :uint8, in: Memory.OAM, length: MAX_NUM_LETTERS
+
+  ;; The current modify index
+  declare :current_letter_index, as: :uint8, in: Memory.OAM
+
+  ;; The current delay for jumping the next letter
+  declare :current_letter_delay, as: :uint8, in: Memory.OAM
+
+
+
 
   ;; Waits for the next frame
   def wait_for_vblank
@@ -17,6 +58,226 @@ module Game
   _loop_out_vblank:
     LDA   CPU.HVBJOY
     BPL   _loop_out_vblank
+  end
+
+  ; Resets the OAM
+  macro reset_oam
+    PPU::OAM.set_address 0
+
+    LDA   #$FF
+    LDX   #512
+  _loop_low:
+    STA   PPU.OAMDATA
+    DEX
+    BNZ   _loop_low
+
+    LDX   #MAX_NUM_LETTERS * 4 - 1
+  _loop_local:
+    STA   letters.long_address, X
+    DEX
+    BPL   _loop_local
+
+    LDX   #MAX_NUM_LETTERS - 1
+    LDA   #0
+  _loop_velocity:
+    STA   letter_velocity_high.long_address, X
+    STA   letter_velocity_low.long_address, X
+    STA   letter_position_low.long_address, X
+    DEX
+    BPL   _loop_velocity
+
+    LDX   #32
+  _loop_high:
+    STZ   PPU.OAMDATA
+    DEX
+    BNZ   _loop_high
+  end
+
+  ; Configures the PPU
+  macro configure_ppu
+    ; Upload some beautiful colors
+    PPU::Palette.set_color_index 0
+    PPU::Palette.write_rgb 16, 15, 31
+    
+    PPU::Palette.set_color_index 128
+    PPU::Palette.write_rgb 0, 0, 0
+    PPU::Palette.write_rgb 11, 11, 11
+    PPU::Palette.write_rgb 21, 21, 21
+    PPU::Palette.write_rgb 31, 31, 31
+
+    ; Configure the screen
+    PPU::Screen.configure_main_screen obj: true
+    PPU::Screen.configure_sub_screen
+    PPU::OAM.configure FontInPPU
+
+    ; Upload the font data
+    PPU::VRAM.copy_16(Assets.font, FONT_SIZE_IN_BYTES, FontInPPU)
+  end
+
+  ; Resets everything
+  def initialize
+    reset_oam
+    configure_ppu
+
+    LDA   #0
+    STA   current_letter_index.long_address
+    STA   current_letter_delay.long_address
+  end
+
+  ; Copy the message letters
+  def _write
+    LDX   #0
+    LDA   #FONT_X_POSITION
+    STA   dp(letter_offset)
+    STZ   dp(current_num_letters)
+
+  _loop:
+    ; Read letter from ROM
+    LDA   0, Y
+    BZE   _end_of_loop
+
+    SEC
+    SBC   #$30
+    BMI   _is_space
+
+    ; Store tile index to OAM
+    STA   letters.long_address + 2, X
+    LDA   dp(letter_offset)
+    STA   letters.long_address, X
+    LDA   #FONT_Y_POSITION
+    STA   letters.long_address + 1, X
+    LDA   #0
+    STA   letters.long_address + 3, X
+
+    ; Advance pointer in OAM
+    INX
+    INX
+    INX
+    INX
+    INC   dp(current_num_letters)
+
+  _is_space:
+    ; Add space
+    LDA   dp(letter_offset)
+    CLC
+    ADC   #8
+    STA   dp(letter_offset)
+
+    ; Increment pointers
+    INY
+    BRA   _loop
+
+  _end_of_loop:
+    LDA   dp(current_num_letters)
+    STA   num_letters.long_address
+  end
+
+  ; Write the message
+  macro write(message)
+    CPU.with_bank message.bank do
+      LDY   #message
+      _write
+    end
+  end
+
+  ; Apply velocity to the letters
+  macro _apply_velocity_to_letters
+    LDX   #0
+    LDY   #0
+
+  _loop:
+    ; Is the letter at a valid position?
+    LDA   letters + 1, Y
+    CMP   #FONT_Y_POSITION
+    BNE   _need_to_be_processed
+
+    ; Check current velocity
+    LDA   letter_velocity_high, X
+    ORA   letter_velocity_low, X
+    BZE   _skip
+
+  _need_to_be_processed:
+    ; Apply gravity
+    LDA   letter_velocity_low, X
+    CLC
+    ADC   #LETTER_GRAVITY
+    STA   letter_velocity_low, X
+    LDA   letter_velocity_high, X
+    ADC   #0
+    STA   letter_velocity_high, X
+
+    ; Apply velocity to letter
+    LDA   letter_position_low, X
+    CLC
+    ADC   letter_velocity_low, X
+    STA   letter_position_low, X
+
+    LDA   letters + 1, Y
+    ADC   letter_velocity_high, X
+    CMP   #FONT_Y_POSITION
+    BLT   _is_above
+    LDA   #FONT_Y_POSITION
+  _is_above:
+    STA   letters + 1, Y
+
+  _skip:
+    ; Advance to next letter
+    INY
+    INY
+    INY
+    INY
+    INX
+    CPX   num_letters
+    BNE   _loop
+    
+  end
+
+  ; Applies new velocity
+  macro _hop_next_letter
+    ; Wait for delay
+    DEC   current_letter_delay
+    BPL   _still_in_delay
+    LDA   #LETTER_JUMP_DELAY
+    STA   current_letter_delay
+
+    ; Check whether we are in a valid position of the text
+    LDA   current_letter_index
+    CMP   #LETTER_JUMP_START_COUNTER_UNTIL
+    BNE   _no_reset_counter
+
+    STZ   current_letter_index
+    LDA   #0
+  _no_reset_counter:
+    CMP   num_letters
+    BGE   _no_update_this_frame
+
+    ; Store velocity
+    TAX
+    LDA   #0 - LETTER_JUMP_POWER
+    STA   letter_velocity_high, X
+    STZ   letter_velocity_low, X
+
+  _no_update_this_frame:
+    INC   current_letter_index
+
+  _still_in_delay:
+  end
+
+  ; Update the animation
+  def update
+    CPU.with_bank OAM_BANK do
+      CPU.set XY:8
+
+      _apply_velocity_to_letters
+      _hop_next_letter
+
+      CPU.set XY:16
+    end
+  end
+  
+  ; Copy the animation
+  def update_vblank
+    PPU::OAM.copy_8 letters, size: MAX_NUM_LETTERS * 4, destination: 0
   end
 
   ; Fade in
@@ -30,7 +291,10 @@ module Game
 
     2.times do |index|
       wait_for_vblank
+      update_vblank
+      update
     end
+
 
     LDA   dp(current_fade_value)
     INC   A
@@ -43,13 +307,16 @@ end
 
 def main
   SNES.initialize
-
-  ; Upload some beautiful color
-  PPU::Palette.set_color_index 0
-  PPU::Palette.write $7DF0
+  Game.initialize
+  
+  Game.write Assets.message
 
   Game.fade_in
 
 loop:
+  Game.update
+  Game.wait_for_vblank
+  Game.update_vblank
+
   BRA loop
 end

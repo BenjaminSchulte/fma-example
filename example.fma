@@ -1,5 +1,8 @@
 require "engine"
 require "engine/header/snes"
 
-require "example/main"
 require "example/configuration"
+require "example/memory"
+require "example/assets"
+require "example/main"
+require "example/setup"

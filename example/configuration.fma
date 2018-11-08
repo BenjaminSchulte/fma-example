@@ -1,19 +1,30 @@
-SNES.configure do
+module Game
 
-  game_code "GAME"
-  game_title "My first game"
-  destination :germany
+  ; Size in bytes of the font assets
+  FONT_SIZE_IN_BYTES = 1536
 
-  map_mode $31
-  rom_type ram: true, battery: true
+  ; Bank to use for OAM stuff
+  OAM_BANK = $7E
 
-  memory_map do
+  ; Position of the font in X
+  FONT_X_POSITION = 32
 
-    header_location $C0, $FFB0
+  ; Position of the font in Y
+  FONT_Y_POSITION = 111
 
-    banks $C0..$FF, address: $0000..$FFFF, located_at: $0
-    banks $00..$07, address: $8000..$FFFF, shadows_banks_from: $C0, shadows_addresses_from: $8000
+  ; Messages maximum letters
+  MAX_NUM_LETTERS = 32
 
-  end
+  ; Count up until which position
+  LETTER_JUMP_START_COUNTER_UNTIL = 40
+
+  ; Delay between jumping the next letter
+  LETTER_JUMP_DELAY = 2
+
+  ; The power how strong to jump a letter
+  LETTER_JUMP_POWER = 5
+
+  ; Letter gravity
+  LETTER_GRAVITY = $40
 
 end

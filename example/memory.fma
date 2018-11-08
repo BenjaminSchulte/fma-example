@@ -1,0 +1,9 @@
+module Memory
+
+  ;; A Scope which can be used for the PPU (Use some fake bank)
+  scope :PPU, bank: $01 
+
+  ;; The OAM rank
+  scope :OAM, bank: Game.OAM_BANK
+
+end

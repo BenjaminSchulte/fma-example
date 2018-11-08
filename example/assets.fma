@@ -1,0 +1,12 @@
+module Assets
+
+  font = memory_block "assets.font" do |w|
+    w.file "assets/font.bin"
+  end
+
+  message = memory_block "assets.message" do |w|
+    w.db "WELCOME TO FMA FOR SNES"
+    w.db 0
+  end
+
+end
